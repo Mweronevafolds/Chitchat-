@@ -1,90 +1,105 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// backend/controllers/tilesController.js (Using startChat - Final Attempt)
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Google AI Client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// *** Try gemini-pro WITH the streaming method ***
-const tileGenerationModel = genAI.getGenerativeModel({ model: "gemini-pro" }); // Using gemini-pro
+// *** Use Gemini 2.0 Flash - Latest available model ***
+const tileGenerationModel = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    safetySettings: [ // Relaxed safety settings
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+    ]
+});
 
 // Initialize Supabase Admin Client
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const generateTiles = async (req, res) => {
   try {
+    console.log(`--- TILE GENERATION REQUEST --- User: ${req.user.id}`); // Log entry point
+
     // 1. Fetch user profile
     const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('age_group, tone_pref')
-      .eq('id', req.user.id)
-      .single();
+      .from('profiles').select('age_group, tone_pref').eq('id', req.user.id).single();
 
     if (profileError) throw profileError;
-    if (!profile) return res.status(404).json({ error: 'Profile not found.' });
+    if (!profile) {
+        console.warn(`Profile not found for user ${req.user.id}`);
+        return res.status(404).json({ error: 'Profile not found.' });
+    }
+    console.log(`User profile found:`, profile);
 
     // 2. System Prompt instructing JSON output
-    const systemPrompt = `You are the Curiosity Editor for ChitChat... (Your full prompt)... Your output MUST be ONLY a valid JSON object... Structure: {"tiles": [{"id": "...", "type": "...", ...}]}`; // Ensure JSON instruction is clear
+    const systemInstruction = `You are the Curiosity Editor for ChitChat. Your input is a user profile JSON object. Your output MUST be ONLY a valid JSON object (no surrounding text or explanations) containing a key "tiles" which is an array of exactly 6 "tile" objects. The tiles should be clicky, safe for age group '${profile.age_group || 'adult'}', and use a '${profile.tone_pref || 'Casual'}' tone. Structure: [{"id": "unique_string", "type": "micro-lesson|fact|challenge|quiz", "hook": "1-line teaser", "estimated_time_min": 1-10, "seed_prompt": "Text to start chat"}]`;
     const userPrompt = `Generate tiles for this profile: ${JSON.stringify(profile)}`;
 
-    // 3. Call Gemini API using generateContentStream with gemini-pro
-    console.log(`Generating tiles for User ${req.user.id} using STREAMING model 'gemini-pro'...`);
+    // Combine for a single message turn
+    const fullPrompt = `${systemInstruction}\n\n${userPrompt}`;
 
-    const contents = [{ role: 'user', parts: [{ text: userPrompt }] }];
+    // 3. Call Gemini API using startChat + sendMessage
+    console.log(`Generating tiles for user profile using model 'gemini-2.0-flash' via startChat/sendMessage...`);
 
-    const result = await tileGenerationModel.generateContentStream({
-        contents: contents,
-        systemInstruction: systemPrompt,
+    // Start a chat session (even for a single turn) - pass safety settings here too if needed
+    const chat = tileGenerationModel.startChat({
+        history: [], // No history for this specific task
+        // safetySettings: [...] // Can be set here or during model init
     });
 
-    // 4. Accumulate the streamed response (Same as before)
-    let accumulatedJsonText = '';
-    for await (const chunk of result.stream) {
-        try {
-            const chunkText = chunk.text();
-            accumulatedJsonText += chunkText;
-        } catch (streamError) {
-             console.error("Gemini stream processing error during tile generation:", streamError);
-             // Accumulate error message?
-        }
-    }
-    console.log("Accumulated raw text response from Gemini stream:", accumulatedJsonText);
+    // Send the full prompt as a single message
+    const result = await chat.sendMessage(fullPrompt); // Use non-streaming sendMessage
+    const response = result.response;
 
-    if (!accumulatedJsonText) {
-        // Check safety feedback if response is empty
-        // const safetyFeedback = await result.response.promptFeedback(); // Need to adapt if using stream result directly
-        throw new Error('Gemini returned empty stream response for tiles.');
+    console.log("Raw response object from sendMessage:", JSON.stringify(response, null, 2)); // Log the entire response
+
+    // 4. Extract and Parse the JSON response
+    const blockReason = response?.promptFeedback?.blockReason;
+    if (blockReason) {
+        console.error("Gemini response was blocked. Reason:", blockReason, "Safety Ratings:", response?.promptFeedback?.safetyRatings);
+        throw new Error(`Gemini response blocked due to ${blockReason}.`);
     }
 
-    // 5. Parse the accumulated JSON response (Same as before)
+    const jsonText = response?.text(); // Use text() method on the response object
+    if (!jsonText) {
+        console.error("Gemini response missing text content. Full Response:", response);
+        throw new Error(`Gemini returned empty or unexpected content structure.`);
+    }
+    console.log("Raw JSON text extracted:", jsonText);
+
+    // 5. Parse the JSON string (with cleaning)
     let tilesObject;
     try {
-        const jsonStart = accumulatedJsonText.indexOf('{');
-        const jsonEnd = accumulatedJsonText.lastIndexOf('}') + 1;
+        const cleanedJsonText = jsonText.replace(/^```json\s*/, '').replace(/```$/, '');
+        const jsonStart = cleanedJsonText.indexOf('{');
+        const jsonEnd = cleanedJsonText.lastIndexOf('}') + 1;
         if (jsonStart !== -1 && jsonEnd !== -1) {
-             const potentialJson = accumulatedJsonText.substring(jsonStart, jsonEnd);
-             tilesObject = JSON.parse(potentialJson);
-        } else {
-             throw new Error("Could not find valid JSON object braces {} in response.")
-        }
+             tilesObject = JSON.parse(cleanedJsonText.substring(jsonStart, jsonEnd));
+        } else { throw new Error("Could not find valid JSON object braces {} in response."); }
     } catch(parseError) {
-        console.error("Failed to parse accumulated JSON from Gemini stream:", parseError);
-        console.error("Accumulated Text was:", accumulatedJsonText);
-        throw new Error("Failed to parse AI stream response into JSON format.");
+        console.error("Failed to parse JSON from sendMessage response:", parseError);
+        console.error("Raw Text was:", jsonText);
+        throw new Error("Failed to parse AI response into JSON format.");
     }
 
     // 6. Send back the array of tiles
-    res.status(200).json(tilesObject.tiles || []);
-    console.log(`Successfully generated ${tilesObject.tiles?.length || 0} tiles via stream for User ${req.user.id}.`);
+    if (!tilesObject || !Array.isArray(tilesObject.tiles)) {
+         console.error("Parsed object does not contain a 'tiles' array:", tilesObject);
+        throw new Error("AI response did not match the expected JSON structure ('tiles' array missing).");
+    }
+    res.status(200).json(tilesObject.tiles);
+    console.log(`Successfully generated ${tilesObject.tiles.length} tiles via startChat for User ${req.user.id}.`);
 
   } catch (error) {
     console.error(`Error generating tiles for User ${req.user.id}:`, error);
-    // Log more details if it's a Google specific error
-    if (error.message.includes("GoogleGenerativeAI")) {
-        console.error("Gemini API Error details:", error);
+     // Log specific Google API errors if available
+    if (error.message && error.message.includes("GoogleGenerativeAI")) {
+        console.error("Detailed GoogleGenerativeAI Error:", JSON.stringify(error, null, 2));
     }
     res.status(500).json({ error: 'Failed to generate curiosity feed', details: error.message });
   }
 };
 
-module.exports = {
-  generateTiles,
-};
+module.exports = { generateTiles };
