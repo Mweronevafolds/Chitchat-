@@ -25,6 +25,11 @@ const profileRoutes = require('./routes/profileRoutes');
 const tilesRoutes = require('./routes/tilesRoutes'); // Add this
 const debugRoutes = require('./routes/debugRoutes'); // Add this
 const pathRoutes = require('./routes/pathRoutes'); // Learning paths
+const recommendationRoutes = require('./routes/recommendationRoutes'); // AI recommendations
+const activityRoutes = require('./routes/activityRoutes'); // Activity logging
+const missionRoutes = require('./routes/missionRoutes'); // Daily missions
+const tutorRoutes = require('./routes/tutorRoutes'); // Tutor system
+const reviewRoutes = require('./routes/reviewRoutes'); // Daily review system
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -39,6 +44,11 @@ app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/profiles', profileRoutes);
 app.use('/api/v1/tiles', tilesRoutes); // And this
 app.use('/api/v1/paths', pathRoutes); // Learning paths
+app.use('/api/v1/recommendations', recommendationRoutes); // AI recommendations
+app.use('/api/v1/activity', activityRoutes); // Activity logging
+app.use('/api/v1/missions', missionRoutes); // Daily missions
+app.use('/api/v1/tutors', tutorRoutes); // Tutor system
+app.use('/api/v1/review', reviewRoutes); // Daily review system
 
 app.get('/', (req, res) => {
   res.send('ChitChat API is alive!');

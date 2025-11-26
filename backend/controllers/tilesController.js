@@ -33,9 +33,58 @@ const generateTiles = async (req, res) => {
     }
     console.log(`User profile found:`, profile);
 
-    // 2. System Prompt instructing JSON output
-    const systemInstruction = `You are the Curiosity Editor for ChitChat. Your input is a user profile JSON object. Your output MUST be ONLY a valid JSON object (no surrounding text or explanations) containing a key "tiles" which is an array of exactly 6 "tile" objects. The tiles should be clicky, safe for age group '${profile.age_group || 'adult'}', and use a '${profile.tone_pref || 'Casual'}' tone. Structure: [{"id": "unique_string", "type": "micro-lesson|fact|challenge|quiz", "hook": "1-line teaser", "estimated_time_min": 1-10, "seed_prompt": "Text to start chat"}]`;
-    const userPrompt = `Generate tiles for this profile: ${JSON.stringify(profile)}`;
+    // 2. *** PERSONALIZATION MAGIC *** Fetch recent search history
+    const { data: recentActivity, error: activityError } = await supabaseAdmin
+      .from('user_activity')
+      .select('content, activity_type, created_at')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(10); // Last 10 activities
+
+    let historyContext = '';
+    if (recentActivity && recentActivity.length > 0) {
+      const searches = recentActivity.filter(a => a.activity_type === 'search').map(a => a.content);
+      if (searches.length > 0) {
+        historyContext = `\n\nRECENT USER INTERESTS (use these to personalize tiles):\n- ${searches.join('\n- ')}`;
+        console.log(`📊 User has ${searches.length} recent searches. Personalizing tiles...`);
+      }
+    } else {
+      console.log(`📊 No activity history found. Generating general tiles.`);
+    }
+
+    // 3. *** CURIOSITY ENGINE PROMPT *** - 50/50 Personalized + Wildcards
+    const systemInstruction = `You are the Curiosity Engine for ChitChat - a discovery platform that feeds the mind. Your job is to create a perfect balance between PERSONALIZATION and SERENDIPITY.
+
+Your output MUST be ONLY a valid JSON object containing a key "tiles" which is an array of exactly 6 tile objects.
+
+🎯 TILE COMPOSITION (CRITICAL):
+${recentActivity && recentActivity.length > 0 ? `
+- Generate 3 PERSONALIZED tiles based on the user's recent searches (below)
+- Generate 3 WILDCARD tiles: obscure facts, rabbit holes, "things you'd only find in books"
+  Examples of wildcards:
+  * "The Great Emu War of 1932" 
+  * "How Octopuses Edit Their Own RNA"
+  * "The Forgotten Female Codebreakers of WWII"
+  * "Why Bananas Are Berries But Strawberries Aren't"
+  * "The Mystery of the Voynich Manuscript"
+  * "How Trees Communicate Through Fungal Networks"
+` : `
+- Generate 6 WILDCARD tiles: fascinating, obscure knowledge from all domains
+- Topics users wouldn't casually encounter unless they specifically searched
+- The kind of content that makes you say "Wait, really?"
+- Mix science, history, nature, culture, technology, art, psychology
+`}
+
+📋 FORMATTING RULES:
+- Safe for age group: ${profile.age_group || 'adult'}
+- Tone: ${profile.tone_pref || 'Casual'}
+- Types: micro-lesson, fact, challenge, quiz
+- Each tile should spark genuine curiosity
+- Hooks should be irresistible (use numbers, surprises, questions)
+
+Structure: {"tiles": [{"id": "unique_string", "type": "micro-lesson|fact|challenge|quiz", "hook": "1-line teaser", "estimated_time_min": 1-10, "seed_prompt": "Text to start chat"}]}`;
+
+    const userPrompt = `Generate tiles for profile: ${JSON.stringify(profile)}${historyContext}`;
 
     // Combine for a single message turn
     const fullPrompt = `${systemInstruction}\n\n${userPrompt}`;

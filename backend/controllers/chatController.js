@@ -1,6 +1,9 @@
 // backend/controllers/chatController.js
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
+const { Buffer } = require('buffer');
 
 // --- Initialization ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -22,10 +25,101 @@ const MAX_CONTEXT_CHUNKS = 3;
 const RAG_SIMILARITY_THRESHOLD = 0.75;
 const EMBEDDING_DIMENSIONS = 768;
 
+// Helper function to upload image to Supabase Storage
+async function uploadImageToStorage(mediaUri, userId, sessionId) {
+  try {
+    let imageBuffer;
+    let mimeType;
+    let fileExtension;
+
+    // Process different media URI formats
+    if (mediaUri.startsWith('data:')) {
+      // Base64 data URI (supports images and documents)
+      const base64Data = mediaUri.split(',')[1];
+      const mimeMatch = mediaUri.match(/data:(.*?);/);
+      mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+      imageBuffer = Buffer.from(base64Data, 'base64');
+      
+      // Determine extension from MIME type
+      if (mimeType.includes('pdf')) fileExtension = 'pdf';
+      else if (mimeType.includes('word')) fileExtension = 'docx';
+      else if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) fileExtension = 'xlsx';
+      else if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) fileExtension = 'pptx';
+      else if (mimeType.includes('text/plain')) fileExtension = 'txt';
+      else if (mimeType.includes('text/csv')) fileExtension = 'csv';
+      else fileExtension = mimeType.split('/')[1] || 'bin';
+    } else if (mediaUri.startsWith('file://')) {
+      // Local file URI
+      const filePath = mediaUri.replace('file://', '');
+      imageBuffer = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      fileExtension = ext.substring(1);
+      
+      // Determine MIME type from extension
+      const mimeMap = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'gif': 'image/gif',
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'txt': 'text/plain',
+        'csv': 'text/csv'
+      };
+      mimeType = mimeMap[fileExtension] || 'application/octet-stream';
+    } else {
+      throw new Error('Unsupported media URI format');
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(7);
+    const filename = `${timestamp}_${randomStr}.${fileExtension}`;
+    const storagePath = `${userId}/${sessionId}/${filename}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabaseAdmin.storage
+      .from('chat-media')
+      .upload(storagePath, imageBuffer, {
+        contentType: mimeType,
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase storage upload error:', error);
+      throw new Error(`Storage upload failed: ${error.message}`);
+    }
+
+    // Get public URL (for private buckets, we'll use signed URLs later)
+    const { data: urlData } = supabaseAdmin.storage
+      .from('chat-media')
+      .getPublicUrl(storagePath);
+
+    console.log(`✓ File uploaded to storage: ${storagePath}`);
+    
+    return {
+      url: urlData.publicUrl,
+      path: storagePath,
+      mimeType: mimeType,
+      size: imageBuffer.length,
+      filename: filename
+    };
+  } catch (error) {
+    console.error('Error uploading file to storage:', error);
+    throw error;
+  }
+}
+
 const postChatMessage = async (req, res) => {
   let currentSessionId = null;
   try {
-    let { sessionId, input, mode, contextResourceIds, seedPrompt } = req.body;
+    let { sessionId, input, mode, contextResourceIds, seedPrompt, mediaUri } = req.body;
     const userId = req.user?.id;
 
     // --- Input Validation & Session Creation (same as before) ---
@@ -66,6 +160,34 @@ const postChatMessage = async (req, res) => {
         }
     } else { 
         console.log(`Continuing session: ${currentSessionId}`); 
+    }
+
+    // --- Upload Media to Storage if provided ---
+    let uploadedMedia = null;
+    if (mediaUri) {
+      // Check if mediaUri is already a Supabase Storage URL (pre-uploaded via /upload endpoint)
+      const isSupabaseUrl = mediaUri.includes('supabase.co/storage/v1/object/public/');
+      
+      if (isSupabaseUrl) {
+        // Already uploaded, extract path and use directly
+        console.log(`✓ Using pre-uploaded media: ${mediaUri}`);
+        uploadedMedia = {
+          path: mediaUri.split('chat-media/')[1] || 'uploaded',
+          publicUrl: mediaUri,
+          mimeType: req.body.mediaType || 'application/octet-stream'
+        };
+      } else {
+        // Need to upload (legacy base64 or file:// URIs)
+        console.log(`Processing media upload for session ${currentSessionId}...`);
+        try {
+          uploadedMedia = await uploadImageToStorage(mediaUri, userId, currentSessionId);
+          console.log(`✓ Media uploaded successfully: ${uploadedMedia.path}`);
+        } catch (uploadError) {
+          console.error('Failed to upload media:', uploadError);
+          // Continue without media rather than failing the entire request
+          uploadedMedia = null;
+        }
+      }
     }
 
     // --- Fetch History ---
@@ -177,10 +299,21 @@ Context from resources:
 Remember: This is a TEST. Be thorough, fair, and provide constructive feedback!`;
     } else {
       // Default mode (explain, casual, etc.)
-      systemPromptText = `You are ChitChat, an expert and engaging AI assistant. 
+      systemPromptText = `You are ChitChat, an expert and engaging AI assistant with multimodal capabilities. 
 Your goal is to HELP the user based on the current conversation context.
 
 - If the conversation started with a "Seed Prompt" (where you proposed a topic), your job is to address that topic immediately
+- When users share images, analyze them carefully and provide detailed, helpful responses
+- When users share documents (PDFs, Word, Excel, PowerPoint, text files):
+  * Summarize key points and main ideas
+  * Extract important information and data
+  * Answer specific questions about the content
+  * Help with homework, assignments, or research
+- For homework or study materials in images/docs, guide them through the concepts step-by-step
+- For code screenshots, debug or explain the code clearly
+- For diagrams or visual content, explain what you see and how it relates to their question
+- For spreadsheets, help analyze data and create insights
+- For presentations, provide feedback or explain concepts
 - Use analogies and real-world examples to make concepts clear
 - Break complex topics into digestible pieces
 - Always end with a "micro-action" or a thought-provoking question
@@ -199,7 +332,57 @@ Remember: Be proactive, clear, and make interactions enjoyable!`;
     };
 
     const contents = [ ...geminiHistory ]; // History only for startChat
-    const latestUserInput = { role: 'user', parts: [{ text: input }] }; // Latest input for sendMessageStream
+    
+    // Prepare latest user input - with or without image
+    let latestUserInput;
+    if (uploadedMedia || mediaUri) {
+      console.log(`User message includes media${uploadedMedia ? ' (from storage)' : ''}`);
+      
+      // Handle media from various sources
+      const imageParts = [];
+      
+      if (mediaUri.startsWith('data:')) {
+        // Base64 data (image or document)
+        const base64Data = mediaUri.split(',')[1];
+        const mimeType = mediaUri.match(/data:(.*?);/)?.[1] || 'image/jpeg';
+        imageParts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        });
+      } else if (mediaUri.startsWith('http://') || mediaUri.startsWith('https://')) {
+        // URL (Supabase Storage or other)
+        // Use fileData for images, or inlineData for documents if needed
+        const fileUrl = uploadedMedia ? uploadedMedia.publicUrl : mediaUri;
+        console.log(`Using file URL for Gemini: ${fileUrl}`);
+        imageParts.push({
+          fileData: {
+            fileUri: fileUrl,
+            mimeType: uploadedMedia?.mimeType || req.body.mediaType || 'image/jpeg'
+          }
+        });
+      } else {
+        // Fallback: treat as URL
+        console.warn(`Unknown media URI format: ${mediaUri.substring(0, 50)}...`);
+        imageParts.push({
+          fileData: {
+            fileUri: mediaUri
+          }
+        });
+      }
+      
+      // Add text after image
+      imageParts.push({ text: input });
+      
+      latestUserInput = { 
+        role: 'user', 
+        parts: imageParts
+      };
+    } else {
+      // Text-only message
+      latestUserInput = { role: 'user', parts: [{ text: input }] };
+    }
 
     console.log(`Prepared ${contents.length} history parts + system instruction for Gemini.`);
 
@@ -282,19 +465,28 @@ Remember: Be proactive, clear, and make interactions enjoyable!`;
     try {
       console.log(`Saving messages to session ${currentSessionId}...`);
       
-      // Save user message
-      const { error: saveUserErr } = await supabaseAdmin.rpc('save_chat_message', {
+      // Save user message with optional media
+      const userMessageParams = {
         p_session_id: currentSessionId,
         p_sender: 'user',
         p_content: input
-      });
+      };
+      
+      // Add media fields if image was uploaded
+      if (uploadedMedia) {
+        userMessageParams.p_media_url = uploadedMedia.url;
+        userMessageParams.p_media_type = uploadedMedia.mimeType;
+        userMessageParams.p_media_size = uploadedMedia.size;
+      }
+      
+      const { error: saveUserErr } = await supabaseAdmin.rpc('save_chat_message', userMessageParams);
 
       if (saveUserErr) {
         console.error("Failed to save user message:", saveUserErr);
         throw saveUserErr;
       }
 
-      // Save AI response
+      // Save AI response (no media)
       const { error: saveAiErr } = await supabaseAdmin.rpc('save_chat_message', {
         p_session_id: currentSessionId,
         p_sender: 'ai',
@@ -306,7 +498,7 @@ Remember: Be proactive, clear, and make interactions enjoyable!`;
         throw saveAiErr;
       }
 
-      console.log(`✓ Messages saved successfully for session ${currentSessionId}`);
+      console.log(`✓ Messages saved successfully for session ${currentSessionId}${uploadedMedia ? ' (with media)' : ''}`);
     } catch (saveError) {
       console.error("CRITICAL: Message save failed:", saveError);
       // Don't crash the request, but log prominently so we know memory is broken
@@ -406,7 +598,7 @@ const getSessionMessages = async (req, res) => {
     // Fetch all messages for this session, ordered chronologically
     const { data: messages, error: messagesError } = await supabaseAdmin
       .from('chat_messages')
-      .select('id, sender, content, created_at')
+      .select('id, sender, content, created_at, media_url, media_type, media_size')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true });
 
@@ -418,6 +610,9 @@ const getSessionMessages = async (req, res) => {
       role: msg.sender, // 'user' or 'ai'
       content: msg.content,
       timestamp: msg.created_at,
+      media_url: msg.media_url,
+      media_type: msg.media_type,
+      media_size: msg.media_size,
     }));
 
     res.status(200).json(formattedMessages);
@@ -428,8 +623,84 @@ const getSessionMessages = async (req, res) => {
   }
 };
 
+// Upload file endpoint for multipart/form-data
+const uploadFile = async (req, res) => {
+  try {
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const userId = req.user.id;
+    const sessionId = req.body.sessionId;
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const file = req.file;
+    const mimeType = file.mimetype;
+    const fileSize = file.size;
+    const originalName = file.originalname;
+
+    // Determine file extension from MIME type or original filename
+    let fileExtension = path.extname(originalName).toLowerCase().slice(1) || 'bin';
+    
+    // Map MIME types to extensions if needed
+    if (!fileExtension || fileExtension === 'bin') {
+      if (mimeType.includes('pdf')) fileExtension = 'pdf';
+      else if (mimeType.includes('word')) fileExtension = 'docx';
+      else if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) fileExtension = 'xlsx';
+      else if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) fileExtension = 'pptx';
+      else if (mimeType.includes('text/plain')) fileExtension = 'txt';
+      else if (mimeType.includes('text/csv')) fileExtension = 'csv';
+      else if (mimeType.includes('jpeg')) fileExtension = 'jpg';
+      else if (mimeType.includes('png')) fileExtension = 'png';
+      else if (mimeType.includes('gif')) fileExtension = 'gif';
+      else if (mimeType.includes('webp')) fileExtension = 'webp';
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 15);
+    const fileName = `${userId}_${sessionId}_${timestamp}_${randomString}.${fileExtension}`;
+    const filePath = `chat-media/${fileName}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('chat-media')
+      .upload(filePath, file.buffer, {
+        contentType: mimeType,
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase storage upload error:', error);
+      return res.status(500).json({ error: 'Failed to upload file to storage' });
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('chat-media')
+      .getPublicUrl(filePath);
+
+    // Return file information
+    res.status(200).json({
+      url: publicUrl,
+      mimeType: mimeType,
+      size: fileSize,
+      filename: originalName
+    });
+
+  } catch (error) {
+    console.error('Error in uploadFile:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+};
+
 module.exports = { 
   postChatMessage,
   getChatSessions,
   getSessionMessages,
+  uploadFile,
 };
