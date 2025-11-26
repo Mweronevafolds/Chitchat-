@@ -1,19 +1,20 @@
-// This import is required for Supabase to work in React Native
-import 'react-native-url-polyfill/auto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+// Backend Supabase client configuration for Node.js
+const { createClient } = require('@supabase/supabase-js');
 
 // Get the variables from your .env file
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-// Initialize the Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Initialize the Supabase client with service key for backend operations
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
-    // Use AsyncStorage for session storage in React Native
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+    autoRefreshToken: false,
+    persistSession: false,
   },
 });
+
+// Also create a client with anon key for authentication
+const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+
+module.exports = { supabase, supabaseAuth };
