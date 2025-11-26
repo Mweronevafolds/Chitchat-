@@ -1,24 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const tutorController = require('../controllers/tutorController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
-// All routes require authentication
-router.use(authMiddleware);
+// Note: Routes use protect middleware individually instead of router.use()
+
+// Note: Routes use protect middleware individually instead of router.use()
 
 // Tutor Profile Management
-router.post('/upgrade', tutorController.upgradeTutor);
-router.get('/profile', tutorController.getTutorProfile);
-router.put('/profile', tutorController.updateTutorProfile);
-router.get('/analytics', tutorController.getTutorAnalytics);
+router.post('/upgrade', protect, tutorController.upgradeTutor);
+router.get('/profile', protect, tutorController.getTutorProfile);
+router.put('/profile', protect, tutorController.updateTutorProfile);
+router.get('/analytics', protect, tutorController.getTutorAnalytics);
 
 // Learning Path Management
-router.post('/paths', tutorController.createLearningPath);
-router.get('/paths', tutorController.getMyLearningPaths);
-router.put('/paths/:pathId', tutorController.updateLearningPath);
-router.delete('/paths/:pathId', tutorController.deleteLearningPath);
+router.post('/paths', protect, tutorController.createLearningPath);
+router.get('/paths', protect, tutorController.getMyLearningPaths);
+router.put('/paths/:pathId', protect, tutorController.updateLearningPath);
+router.delete('/paths/:pathId', protect, tutorController.deleteLearningPath);
 
 // Public Learning Paths (Discovery)
-router.get('/discover/paths', tutorController.getPublicLearningPaths);
+router.get('/discover/paths', protect, tutorController.getPublicLearningPaths);
 
 module.exports = router;

@@ -1,15 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const reviewController = require('../controllers/reviewController');
-const authMiddleware = require('../middleware/authMiddleware');
-
-// All routes require authentication
-router.use(authMiddleware);
+const { protect } = require('../middleware/authMiddleware');
 
 // Daily Review System
-router.get('/daily', reviewController.getDailyReview);
-router.post('/submit', reviewController.submitReview);
-router.get('/history', reviewController.getReviewHistory);
-router.get('/stats', reviewController.getReviewStats);
+router.get('/daily', protect, reviewController.getDailyReview);
+router.post('/submit', protect, reviewController.submitReview);
+router.get('/history', protect, reviewController.getReviewHistory);
+router.get('/stats', protect, reviewController.getReviewStats);
 
 module.exports = router;
