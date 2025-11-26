@@ -20,9 +20,9 @@ Your Google Gemini API key (`AIzaSyBcjIxiS-zk9AIyQbXKA1H3RkX3Cre3mNI`) was accid
    - Or search for "Credentials" in the search bar
 
 3. **Find Your API Key:**
-   - Look for the key: `AIzaSyBcjIxiS-zk9AIyQbXKA1H3RkX3Cre3mNI`
+   - Look for the key: `AIzaSyBcjIxiS-uju79QbXKA1H3RkX3Cre3mNI`
    - It should be under **API Keys** section
-   - Project: "DaChat" (id: gen-lang-client-0675914099)
+   -
 
 4. **Regenerate the Key:**
    - Click on the key name to open details
