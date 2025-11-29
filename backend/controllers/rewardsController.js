@@ -6,7 +6,7 @@
  * Reference: "Hooked" by Nir Eyal, Duolingo's gamification strategy
  */
 
-const { supabase } = require('../supabase');
+const { supabase, supabaseAdmin } = require('../supabase');
 
 /**
  * The Rewards Engine - Orchestrates all 3 reward types
@@ -78,8 +78,8 @@ class RewardsEngine {
      */
     static async getSocialRewards(userId) {
         try {
-            // Get user's rank
-            const { data: leaderboard, error: leaderboardError } = await supabase
+            // Get user's rank (use supabaseAdmin to bypass RLS)
+            const { data: leaderboard, error: leaderboardError } = await supabaseAdmin
                 .from('leaderboards')
                 .select('*')
                 .limit(100);
@@ -386,7 +386,8 @@ exports.getLeaderboard = async (req, res) => {
         const { limit = 100 } = req.query;
         const userId = req.user?.id;
 
-        const { data: leaderboard, error } = await supabase
+        // Use supabaseAdmin to bypass RLS for leaderboard view
+        const { data: leaderboard, error } = await supabaseAdmin
             .from('leaderboards')
             .select('*')
             .limit(parseInt(limit));
