@@ -42,6 +42,16 @@ ChitChat is a comprehensive mobile and web platform that revolutionizes learning
 
 ## ✨ Features
 
+### 🎰 NEW: Addiction Engine (Variable Reward System)
+
+- **Streak System** - Daily check-ins with escalating rewards
+- **Viral Sharing** - Instant XP rewards for content sharing
+- **Variable Reward Tiles** - 60/30/10 psychological split (Personal/Wildcard/Surprise)
+- **Achievement System** - Milestone badges with XP bonuses
+- **K-Factor Tracking** - Built-in viral coefficient analytics
+
+> 🚀 **[Start Here: Addiction Engine Guide →](ADDICTION_ENGINE_INDEX.md)**
+
 ### 🤖 AI-Powered Features
 
 - **Smart Chat Assistant**
@@ -242,6 +252,18 @@ ChitChat is a comprehensive mobile and web platform that revolutionizes learning
 ---
 
 ## 📚 Documentation
+
+### 🎰 NEW: Addiction Engine (Start Here!)
+
+| Document | Description | Time |
+|----------|-------------|------|
+| **[ADDICTION_ENGINE_INDEX.md](ADDICTION_ENGINE_INDEX.md)** | 🌟 **START HERE** - Complete navigation hub | 2 min |
+| **[QUICK_START_ADDICTION_ENGINE.md](QUICK_START_ADDICTION_ENGINE.md)** | Deploy in 5 minutes | 5 min |
+| **[ADDICTION_ENGINE_SUMMARY.md](ADDICTION_ENGINE_SUMMARY.md)** | System overview & psychology | 10 min |
+| **[SHARE_BUTTON_INTEGRATION.md](SHARE_BUTTON_INTEGRATION.md)** | Code examples for integration | 15 min |
+| **[IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md)** | Strategy, metrics & monitoring | 20 min |
+| **[ADDICTION_ENGINE_GUIDE.md](ADDICTION_ENGINE_GUIDE.md)** | Technical deep dive | 30 min |
+| **[ADDICTION_ENGINE_FILE_STRUCTURE.md](ADDICTION_ENGINE_FILE_STRUCTURE.md)** | Complete file reference | 10 min |
 
 ### Comprehensive Guides
 

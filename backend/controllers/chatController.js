@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const { Buffer } = require('buffer');
+const { checkUsageLimitHelper } = require('./monetizationController'); // Import usage checker
 
 // --- Initialization ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -122,7 +123,17 @@ const postChatMessage = async (req, res) => {
     let { sessionId, input, mode, contextResourceIds, seedPrompt, mediaUri } = req.body;
     const userId = req.user?.id;
 
-    // --- Input Validation & Session Creation (same as before) ---
+    // --- 0. CHECK USAGE LIMIT ---
+    const canChat = await checkUsageLimitHelper(userId, 'messages_sent');
+    if (!canChat) {
+      return res.status(403).json({ 
+        error: 'Daily message limit reached.',
+        upgrade_required: true, // Frontend uses this to show upgrade modal
+        message: 'You\'ve reached your daily message limit. Upgrade to Plus for unlimited messages!'
+      });
+    }
+
+    // --- Input Validation & Session Creation ---
     if (!userId) return res.status(401).json({ error: 'User not authenticated.' });
     if (!input || typeof input !== 'string' || input.trim() === '') {
       return res.status(400).json({ error: 'Input text is required.' });

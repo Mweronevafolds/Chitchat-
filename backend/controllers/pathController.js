@@ -11,12 +11,12 @@ const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABAS
 // --- Generate a New Learning Path ---
 const generatePath = async (req, res) => {
   try {
-    const { topic } = req.body;
+    const { topic, isExamCram } = req.body; // <-- Add Exam Cram flag
     const userId = req.user.id;
 
     if (!topic) return res.status(400).json({ error: 'Topic is required' });
 
-    console.log(`Generating learning path for '${topic}'...`);
+    console.log(`Generating learning path for '${topic}'${isExamCram ? ' (EXAM CRAM MODE)' : ''}...`);
 
     // 1. Get user profile for personalization
     const { data: profile } = await supabaseAdmin
@@ -26,33 +26,75 @@ const generatePath = async (req, res) => {
       .single();
 
     // 2. Prompt Engineering for Curriculum Generation
-    const prompt = `
-      You are an expert curriculum designer for a gamified learning app.
-      Create a structured learning path for the subject: "${topic}".
-      Target Audience: ${profile?.age_group || 'Adult'}, Tone: ${profile?.tone_pref || 'Casual'}.
+    let prompt;
+    
+    if (isExamCram) {
+      // --- THE EXAM CRAM PROMPT ---
+      prompt = `
+        URGENT: The user has a "${topic}" exam coming up.
+        Create a "Survival Guide" learning path designed for maximum efficiency.
+        Target Audience: University Student. Tone: Direct, High-Yield, No Fluff.
 
-      Output MUST be valid JSON with this structure:
-      {
-        "title": "Creative Title for the Path",
-        "description": "Short, exciting description",
-        "levels": [
-          {
-            "title": "Level 1: The Basics",
-            "lessons": [
-              { "title": "Lesson Name", "description": "What we will learn", "emoji": "🔰" },
-              ... (3-4 lessons per level)
-            ]
-          },
-          ... (Total 3 Levels)
-        ],
-        "final_boss": {
-          "title": "The Final Boss: [Name]",
-          "description": "A tough challenge to prove mastery.",
-          "emoji": "👹"
+        Focus ONLY on the most commonly tested concepts (Pareto Principle: 20% effort → 80% results).
+
+        Output MUST be valid JSON with this structure:
+        {
+          "title": "⚡ ${topic} Exam Survival Guide",
+          "description": "High-yield concepts only. Pass your exam in minimum time.",
+          "levels": [
+            {
+              "title": "Level 1: Emergency Concepts",
+              "lessons": [
+                { "title": "Core Concept Name", "description": "The ONE thing that always appears", "emoji": "🎯" },
+                ... (3-4 highest-yield lessons)
+              ]
+            },
+            {
+              "title": "Level 2: Common Pitfalls",
+              "lessons": [
+                { "title": "Mistake Name", "description": "Where students lose marks", "emoji": "⚠️" },
+                ... (3-4 common trap questions)
+              ]
+            }
+          ],
+          "final_boss": {
+            "title": "The Final Boss: Mock Exam",
+            "description": "Hard exam-style questions. Solve these and you're ready.",
+            "emoji": "📝"
+          }
         }
-      }
-      Make it feel rewarding and progressive.
-    `;
+        Make it intense, focused, and exam-oriented.
+      `;
+    } else {
+      // --- STANDARD PROMPT (existing) ---
+      prompt = `
+        You are an expert curriculum designer for a gamified learning app.
+        Create a structured learning path for the subject: "${topic}".
+        Target Audience: ${profile?.age_group || 'Adult'}, Tone: ${profile?.tone_pref || 'Casual'}.
+
+        Output MUST be valid JSON with this structure:
+        {
+          "title": "Creative Title for the Path",
+          "description": "Short, exciting description",
+          "levels": [
+            {
+              "title": "Level 1: The Basics",
+              "lessons": [
+                { "title": "Lesson Name", "description": "What we will learn", "emoji": "🔰" },
+                ... (3-4 lessons per level)
+              ]
+            },
+            ... (Total 3 Levels)
+          ],
+          "final_boss": {
+            "title": "The Final Boss: [Name]",
+            "description": "A tough challenge to prove mastery.",
+            "emoji": "👹"
+          }
+        }
+        Make it feel rewarding and progressive.
+      `;
+    }
 
     const result = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],

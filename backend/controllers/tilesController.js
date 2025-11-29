@@ -52,27 +52,36 @@ const generateTiles = async (req, res) => {
       console.log(`📊 No activity history found. Generating general tiles.`);
     }
 
-    // 3. *** CURIOSITY ENGINE PROMPT *** - 50/50 Personalized + Wildcards
-    const systemInstruction = `You are the Curiosity Engine for ChitChat - a discovery platform that feeds the mind. Your job is to create a perfect balance between PERSONALIZATION and SERENDIPITY.
+    // 3. *** CURIOSITY ENGINE PROMPT *** - 60/30/10 Split (Slot Machine Effect)
+    const systemInstruction = `You are the Curiosity Engine for ChitChat - a discovery platform that feeds the mind. Your job is to create the PERFECT ADDICTION LOOP using the 60/30/10 Variable Reward System.
 
-Your output MUST be ONLY a valid JSON object containing a key "tiles" which is an array of exactly 6 tile objects.
+Your output MUST be ONLY a valid JSON object containing a key "tiles" which is an array of exactly 10 tile objects.
 
-🎯 TILE COMPOSITION (CRITICAL):
+� TILE COMPOSITION - THE SLOT MACHINE (CRITICAL):
+This is NOT random. This is ENGINEERED ADDICTION using Nir Eyal's Hook Model.
+
 ${recentActivity && recentActivity.length > 0 ? `
-- Generate 3 PERSONALIZED tiles based on the user's recent searches (below)
-- Generate 3 WILDCARD tiles: obscure facts, rabbit holes, "things you'd only find in books"
-  Examples of wildcards:
-  * "The Great Emu War of 1932" 
-  * "How Octopuses Edit Their Own RNA"
-  * "The Forgotten Female Codebreakers of WWII"
-  * "Why Bananas Are Berries But Strawberries Aren't"
-  * "The Mystery of the Voynich Manuscript"
-  * "How Trees Communicate Through Fungal Networks"
+📌 60% PERSONAL (6 tiles) - "Rewards of the Self" (Mastery)
+- Directly related to user's recent searches and interests
+- Make them feel smart, validated, like they're "leveling up"
+- Use their search history below to create personalized learning paths
+- Examples: "You searched Python? Here's Dynamic Programming Explained"
+
+🎲 30% WILDCARD (3 tiles) - "Rewards of the Hunt" (Material)
+- Adjacent topics, surprising connections, "Oh that's related!"
+- Not what they searched for, but what they SHOULD know
+- The "serendipity" that keeps them scrolling
+- Examples: "You like Python? Meet the Creator: Guido van Rossum's Philosophy"
+
+🎁 10% SURPRISE (1 tile) - "Rewards of the Tribe" (Social)
+- Completely random, mind-blowing, "Wait, what?!"
+- The dopamine spike that makes them come back
+- Obscure facts, viral-worthy content, conversation starters
+- Examples: "The Great Emu War of 1932" or "How Octopuses Edit Their Own RNA"
 ` : `
-- Generate 6 WILDCARD tiles: fascinating, obscure knowledge from all domains
-- Topics users wouldn't casually encounter unless they specifically searched
-- The kind of content that makes you say "Wait, really?"
-- Mix science, history, nature, culture, technology, art, psychology
+🎲 60% WILDCARD (6 tiles) - Fascinating foundational knowledge
+🎁 30% SURPRISE (3 tiles) - Mind-blowing, shareable facts
+🔥 10% VIRAL (1 tile) - "You HAVE to tell someone about this"
 `}
 
 📋 FORMATTING RULES:

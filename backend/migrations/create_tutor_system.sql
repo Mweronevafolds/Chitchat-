@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS tutor_learning_paths (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Add role column to users table if it doesn't exist
+-- Add role column to profiles table if it doesn't exist
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                 WHERE table_name = 'users' AND column_name = 'role') THEN
-    ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'learner';
+                 WHERE table_name = 'profiles' AND column_name = 'role') THEN
+    ALTER TABLE profiles ADD COLUMN role TEXT DEFAULT 'learner';
   END IF;
 END $$;
 
@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_tutor_profiles_user_id ON tutor_profiles(user_id)
 CREATE INDEX IF NOT EXISTS idx_tutor_learning_paths_tutor_id ON tutor_learning_paths(tutor_id);
 CREATE INDEX IF NOT EXISTS idx_tutor_learning_paths_is_public ON tutor_learning_paths(is_public);
 CREATE INDEX IF NOT EXISTS idx_tutor_learning_paths_category ON tutor_learning_paths(category);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 
 -- Enable Row Level Security
 ALTER TABLE tutor_profiles ENABLE ROW LEVEL SECURITY;

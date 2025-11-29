@@ -17,9 +17,9 @@ exports.upgradeTutor = async (req, res) => {
       return res.status(400).json({ error: 'Teaching style is required' });
     }
 
-    // Update user role to 'tutor'
+    // Update user role to 'tutor' in profiles table
     const { data: userData, error: userError } = await supabase
-      .from('users')
+      .from('profiles')
       .update({ role: 'tutor' })
       .eq('id', userId)
       .select()

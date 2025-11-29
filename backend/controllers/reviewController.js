@@ -34,10 +34,29 @@ exports.getDailyReview = async (req, res) => {
     const reviewDate = new Date();
     reviewDate.setDate(reviewDate.getDate() - Math.min(daysAgo, 7)); // Review from 3-7 days ago
 
+    // Get user's chat sessions first
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('chat_sessions')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (sessionsError) throw sessionsError;
+
+    if (!sessions || sessions.length === 0) {
+      return res.json({
+        success: true,
+        hasReview: false,
+        message: 'No chat history found. Start chatting to enable reviews!'
+      });
+    }
+
+    const sessionIds = sessions.map(s => s.id);
+
+    // Get messages from those sessions
     const { data: chatMessages, error: chatError } = await supabase
       .from('chat_messages')
       .select('*')
-      .eq('user_id', userId)
+      .in('session_id', sessionIds)
       .gte('created_at', reviewDate.toISOString())
       .order('created_at', { ascending: false })
       .limit(50);
@@ -54,10 +73,18 @@ exports.getDailyReview = async (req, res) => {
 
     // Extract learning content from chat history
     const learningContent = chatMessages
-      .filter(msg => msg.role === 'model') // AI responses contain teaching content
-      .map(msg => msg.message_text)
+      .filter(msg => msg.sender === 'bot') // Bot responses contain teaching content
+      .map(msg => msg.content)
       .join('\n\n')
       .slice(0, 5000); // Limit context size
+
+    if (!learningContent || learningContent.length < 100) {
+      return res.json({
+        success: true,
+        hasReview: false,
+        message: 'Not enough learning content for review yet. Chat more with your tutor!'
+      });
+    }
 
     // Use AI to generate a review question
     const model = genAI.getGenerativeModel({ model: 'gemini-pro' });

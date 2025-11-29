@@ -113,12 +113,23 @@ Output MUST be valid JSON:
 Make it feel personal and exciting!
     `;
 
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" }
-    });
+    let result;
+    let missionData;
+    
+    try {
+      result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      });
 
-    const missionData = JSON.parse(result.response.text());
+      const responseText = result.response.text();
+      console.log('AI Response:', responseText);
+      
+      missionData = JSON.parse(responseText);
+    } catch (aiError) {
+      console.error('AI generation failed:', aiError);
+      throw new Error(`AI generation failed: ${aiError.message}`);
+    }
 
     // 3. Save the mission to database
     const { data: newMission, error: insertError } = await supabaseAdmin
@@ -143,7 +154,12 @@ Make it feel personal and exciting!
 
   } catch (error) {
     console.error('Failed to get/generate mission:', error);
-    res.status(500).json({ error: 'Failed to generate mission' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to generate mission',
+      details: error.message,
+      type: error.constructor.name
+    });
   }
 };
 

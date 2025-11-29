@@ -30,16 +30,33 @@ const activityRoutes = require('./routes/activityRoutes'); // Activity logging
 const missionRoutes = require('./routes/missionRoutes'); // Daily missions
 const tutorRoutes = require('./routes/tutorRoutes'); // Tutor system
 const reviewRoutes = require('./routes/reviewRoutes'); // Daily review system
+const rewardsRoutes = require('./routes/rewardsRoutes'); // Variable rewards system
+const streakRoutes = require('./routes/streakRoutes'); // Streak system (Addiction Engine)
+const viralRoutes = require('./routes/viralRoutes'); // Viral sharing system
+const gameRoutes = require('./routes/gameRoutes'); // Gamification routes
+const flashcardRoutes = require('./routes/flashcardRoutes'); // Flashcard game routes
+const curiosityRoutes = require('./routes/curiosityRoutes'); // Curiosity tile opening messages
+const proactiveRoutes = require('./routes/proactive'); // Proactive AI system
+const monetizationRoutes = require('./routes/monetization'); // Monetization system
+const iapRoutes = require('./routes/iap'); // In-App Purchases (IAP)
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+
+// IMPORTANT: Webhook route MUST come before express.json() middleware
+// Stripe webhooks need raw body for signature verification
+app.use('/api/v1/monetization/webhook', express.raw({ type: 'application/json' }));
+
+// Parse JSON for all other routes
 app.use(express.json());
+
 app.use('/api/v1/debug', debugRoutes);
 
 // API Routes
 app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/chat/proactive', proactiveRoutes); // Proactive AI endpoints
 app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/profiles', profileRoutes);
 app.use('/api/v1/tiles', tilesRoutes); // And this
@@ -49,12 +66,21 @@ app.use('/api/v1/activity', activityRoutes); // Activity logging
 app.use('/api/v1/missions', missionRoutes); // Daily missions
 app.use('/api/v1/tutors', tutorRoutes); // Tutor system
 app.use('/api/v1/review', reviewRoutes); // Daily review system
+app.use('/api/v1/rewards', rewardsRoutes); // Variable rewards system
+app.use('/api/v1/streak', streakRoutes); // Streak system (Addiction Engine)
+app.use('/api/v1/viral', viralRoutes); // Viral sharing system
+app.use('/api/v1/games', gameRoutes); // Gamification games
+app.use('/api/v1/flashcards', flashcardRoutes); // Flashcard rapid-fire game
+app.use('/api/v1/curiosity', curiosityRoutes); // Curiosity tile opening messages
+app.use('/api/v1/monetization', monetizationRoutes); // Monetization system
+app.use('/api/v1/iap', iapRoutes); // In-App Purchases (Lives, Energy, etc.)
 
 app.get('/', (req, res) => {
   res.send('ChitChat API is alive!');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
+  console.log(`Access from your phone at http://192.168.1.6:${PORT}`);
 });
 
